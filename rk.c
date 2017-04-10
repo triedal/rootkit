@@ -112,7 +112,6 @@ static int device_release(struct inode *inodep, struct file *filep)
     return 0;
 }
 
-// Returns index of item if it is in the array
 int in_array(int val, int *arr, int size)
 {
     int i;
