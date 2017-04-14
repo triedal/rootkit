@@ -13,6 +13,7 @@ CMD | Description
 `modhide` | Hides kernel module.
 `modshow` | Reveals kernel module.
 `phide` | Hides process with given PID.
+`pshow` | Reveal process with given PID.
 
 ## Installation
 Compile the module and load it with `sudo insmod rk.ko`. For now you must run `sudo chmod 666 /dev/rk` to set the appropriate
